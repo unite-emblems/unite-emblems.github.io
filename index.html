@@ -1,0 +1,797 @@
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1, userscalable=1, minimum-scale=1">
+		<!--meta http-equiv="cache-control" content="max-age=864000" /-->
+		<title>Pok&eacute;mon UNITE emblem utility</title>
+		<meta content="Pokémon UNITE emblem utility" property="og:title">
+		<meta content="Pokémon UNITE | Pokémon UNITE official website" name="twitter:title">
+		<meta content="An intuitive utility for tracking your Pokémon UNITE boost emblems and making your builds" name="description">
+		<meta content="An intuitive utility for tracking your Pokémon UNITE boost emblems and making your builds" property="og:description">
+		<meta content="Prepare to UNITE, Trainers—#PokemonUNITE available now on Nintendo Switch and on mobile devices! https://unite.pokemon.com/en-us" name="twitter:description">
+		<meta content="https://mingyee.net/PokemonUniteEmblems" property="og:url">
+		<meta content="website" property="og:type">
+		<!--meta content="https://unite.pokemon.com/images/share-fb.jpg" property="og:image">
+		<meta content="https://unite.pokemon.com/images/share-tw.jpg" name="twitter:image"-->
+		<meta content="yes" name="apple-mobile-web-app-capable">
+		<meta content="black-translucent" name="apple-mobile-web-app-status-bar-style">
+		<link rel="icon" href="favicon.ico">
+		<link rel="apple-touch-icon" href="apple-touch-icon.png">
+		<link rel="icon" href="favicon.svg" type="image/svg+xml">
+		<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css" rel="stylesheet"
+		      integrity="sha384-gH2yIJqKdNHPEq0n4Mqa/HGKIhSkIHeL5AyhkYV8i59U5AR6csBvApHHNl/vI1Bx" crossorigin="anonymous">
+		<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+		<script>
+			function setCookie(name,value,days) {
+				var expires = "";
+				if (days) {
+					var date = new Date();
+					date.setTime(date.getTime() + (days*24*60*60*1000));
+					expires = "; expires=" + date.toUTCString();
+				}
+				document.cookie = name + "=" + (value || "")  + expires + "; path=/";
+				return true;
+			}
+			function getCookie(name) {
+				var nameEQ = name + "=";
+				var ca = document.cookie.split(';');
+				for(var i=0;i < ca.length;i++) {
+					var c = ca[i];
+					while (c.charAt(0)==' ') c = c.substring(1,c.length);
+					if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
+				}
+				return null;
+			}
+			function eraseCookie(name) {
+				document.cookie = name +'=; Path=/; Expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+			}
+			function numFormat(num) {
+				if (num % 1 !== 0)
+					num = num.toFixed(1);
+				if (num == 0)
+					return '&ensp;&thinsp;0';
+				else if (num > 0)
+					return `+${num}`;
+				else
+					return `&minus;${-num}`;
+			}
+			function base64EncodeOwned(ownedString) {
+				// ownedString is a bit mask with three bits of info per char
+				var byteStringArray = ownedString.split('').map(c => (8+parseInt(c)).toString(2).slice(1)).join('').match(/.{1,8}/g);
+				byteStringArray.push(byteStringArray.pop().padEnd(8,'0'));
+				return btoa(String.fromCharCode(...new Uint8Array(byteStringArray.map(s => parseInt(s,2)))));
+			}
+			function base64DecodeOwned(b64String) {
+				var binaryString = atob(b64String);
+//				return new UInt8Array(binaryString.length(
+			}
+			var numSelected = 0;
+			// HP, Atk, SpA, Def, SpD, Spd, CHR
+			var boosts = Array(7).fill(0);
+			var boostVals = [[30,1.2,1.8,3.0,3.0,21,0.6], [40,1.6,2.4,4.0,4.0,28,0.5], [50,2.0,3.0,5.0,5.0,35,0.6]];
+			var colorCounts = Array(9).fill(0);
+			var colorBoosts = [[[2,1],[4,2],[6,4]],   // HP
+			                   [[3,1],[5,2],[7,4]],   // Atk
+			                   [[3,1],[5,2],[7,4]],   // SpA
+			                   [[2,2],[4,4],[6,8]],   // Def
+			                   [[2,2],[4,4],[6,8]],   // SpD
+			                   [[3,4],[5,6],[7,12]],, // Spd
+			                   [[3,1],[5,2],[7,4]],   // CDR
+			                   [[2,2],[4,4],[6,8]],   // ASp
+			                   [[3,4],[5,8],[7,16]],  // HED
+			                   [[3,1],[5,2],[7,4]]];  // UCR
+			colorBoosts.map(c => { c.push([11,NaN]); for (var i = 3; i > 0; i--) c[i][1] = c[i-1][1]; c[0][1] = 0; return c; } )
+			var colorMap = {"white": 0, "brown": 1, "green": 2, "blue": 3, "purple": 4, "yellow": 5, "black": 7, "red": 8, "pink": 9, "navy": 10};
+			$(document).ready(_ => $.getJSON('./data.json', data => {
+				$('#Spinner, body > div').toggleClass('d-none');
+				availableMons = Array($('#FullListMons > span').length);
+				$('#Filters > div > div').addClass('active').click(function() {
+					$(this).toggleClass('active');
+					$(`${$(this).attr('data-target')}`)
+						.each((_,e) => $(e).toggleClass('d-none', Boolean(!Array.from(e.classList.values()).some(c => $(`#Filters .${c}`).hasClass('active')))));
+				});
+				const importAvailableMonsToast = new bootstrap.Toast(document.getElementById('ImportOwnedToast'));
+				const exportAvailableMonsToast = new bootstrap.Toast(document.getElementById('ExportOwnedToast'));
+				$('#AvailableToggle').click(() => $('#EmblemTable .missing').toggleClass('d-none'));
+				$('#ImportOwned').click(() => importAvailableMonsToast.show());
+				$('#ImportOwnedButton').click(() => setCookie('availableMons', $('#ImportOwnedInput').val(), 365) && location.reload());
+				$('#ExportOwned').click(() => navigator.clipboard.writeText(getCookie('availableMons')).then(() => exportAvailableMonsToast.show()));
+				$('#FullList h4 div').click(function() { $('#FullList h4 div').removeClass('active') && $(this).addClass('active') });
+				$('#HideFullListButton').click(() => $('#FullList').toggleClass('docked'));
+				$('#Filters > h4 > a').eq(0).click(() => $('#Filters > div.row > div:not(.active)').click());
+				$('#Filters > h4 > a').eq(1).click(() => $('#Filters > div.row > div.active').click());
+				$.each(data[0], (k, v) => {
+					$('tbody').append(
+						$('<tr>').attr('id', '-'+k.substring(1)).append(
+							$('<th>').attr('scope', 'row').html('&minus;'+k.substring(1))));
+					$('thead > tr').append($('<th>').text(k));
+				});
+				$.each(data[0], (k, v) => $.each(v, (s, l) =>
+					$(`#${s}`).append($('<td>').append('<div>'))
+					&& $.each(l, (_, m) => $(`#${s}`).children().last().toggleClass('bg-secondary', Boolean(!data[1][m])).children().first().append(
+						(data[1][m] ?
+							$('<span>')
+								.addClass(data[1][m][0])
+								.addClass('missing').append(
+								$('<div>').addClass(data[1][m][1].toLowerCase()).append(
+									$('<img>')
+										.addClass(data[1][m][1].toLowerCase())
+										.attr('src', `https://www.serebii.net/pokemon/art/${data[1][m][0]}.png`))
+									.click(function() {
+										if (numSelected == 10 && !$(this).parent().hasClass('selected'))
+											return;
+										
+										var parSpan = $(this).parent().removeClass('bronze silver gold');
+										var monSelector = `.${Array.from(this.parentElement.classList.values()).join('.')}`;
+										var tblMonSelector = `#EmblemTable ${monSelector}`;
+										var pIndex = $(tblMonSelector).parent().parent().parent()         .children().index($(tblMonSelector).parent().parent()         ) - 1;
+										var mIndex = $(tblMonSelector).parent().parent().parent().parent().children().index($(tblMonSelector).parent().parent().parent());
+										$(`#Build > div.row > span:nth(${pIndex}) > span`).html(numFormat(boosts[pIndex] += (1-2*parSpan.hasClass('selected'))*boostVals[0][pIndex]));
+										$(`#Build > div.row > span:nth(${mIndex}) > span`).html(numFormat(boosts[mIndex] -= (1-2*parSpan.hasClass('selected'))*boostVals[0][mIndex]));
+										Array.from(this.parentElement.firstChild.classList.values()).forEach(c => {
+											colorCounts[colorMap[c]] += 1-2*parSpan.hasClass('selected');
+											for (var tier of colorBoosts[colorMap[c]])
+												if (tier[0] > colorCounts[colorMap[c]]) {
+													$(`#Build > div.row > span:nth(${colorMap[c]}) > sup`)
+														.removeClass('t0 t1 t2 t3')
+														.addClass('t'+colorBoosts[colorMap[c]].indexOf(tier))
+															.find('span').text(tier[1]);
+													break;
+												}
+										});
+										if (parSpan.hasClass('selected')) {
+											$(`#BuildMons ${monSelector}`).remove();
+											$(monSelector).removeClass('selected');
+											numSelected--;
+										}
+										else {
+											++numSelected;
+											parSpan.addClass('selected');
+											$('#BuildMons').append(
+												parSpan.clone(true).addClass('bronze').attr('data-tier',0).append(
+													$('<div>').addClass('bronze active').click(e => {
+														if ($(e.target).hasClass('active'))
+															return;
+														$(e.target).parent().removeClass('silver gold')  .addClass('bronze').find('.active').removeClass('active');
+														$(e.target).addClass('active');
+														boosts[pIndex] += boostVals[0][pIndex] - boostVals[$(e.target).parent().attr('data-tier')][pIndex];
+														boosts[mIndex] -= boostVals[0][mIndex] - boostVals[$(e.target).parent().attr('data-tier')][mIndex];
+														$(`#Build > div.row > span:nth(${pIndex}) > span`).html(numFormat(boosts[pIndex]));
+														$(`#Build > div.row > span:nth(${mIndex}) > span`).html(numFormat(boosts[mIndex]));
+														$(e.target).parent().attr('data-tier',0);
+													})).append(
+													$('<div>').addClass('silver').click(e => {
+														if ($(e.target).hasClass('active'))
+															return;
+														$(e.target).parent().removeClass('bronze gold')  .addClass('silver').find('.active').removeClass('active');
+														$(e.target).addClass('active');
+														boosts[pIndex] += boostVals[1][pIndex] - boostVals[$(e.target).parent().attr('data-tier')][pIndex];
+														boosts[mIndex] -= boostVals[1][mIndex] - boostVals[$(e.target).parent().attr('data-tier')][mIndex];
+														$(`#Build > div.row > span:nth(${pIndex}) > span`).html(numFormat(boosts[pIndex]));
+														$(`#Build > div.row > span:nth(${mIndex}) > span`).html(numFormat(boosts[mIndex]));
+														$(e.target).parent().attr('data-tier',1);
+
+													})).append(
+													$('<div>').addClass('gold').click(e => {
+														if ($(e.target).hasClass('active'))
+															return;
+														$(e.target).parent().removeClass('bronze silver').addClass('gold')  .find('.active').removeClass('active');
+														$(e.target).addClass('active');
+														boosts[pIndex] += boostVals[2][pIndex] - boostVals[$(e.target).parent().attr('data-tier')][pIndex];
+														boosts[mIndex] -= boostVals[2][mIndex] - boostVals[$(e.target).parent().attr('data-tier')][mIndex];
+														$(`#Build > div.row > span:nth(${pIndex}) > span`).html(numFormat(boosts[pIndex]));
+														$(`#Build > div.row > span:nth(${mIndex}) > span`).html(numFormat(boosts[mIndex]));
+														$(e.target).parent().attr('data-tier',2);
+
+													}))
+												);
+										}
+										$('#NumSelected').text(numSelected);
+								})):
+							$('<span>').html(m)).addClass('mon')))));
+				$.each(data[1], (_, v) =>
+					v[1].length > 0 && 
+						$('#FullListMons').append(
+							$('<span>').attr('data-target', v[0]).append(
+								$('<img>').addClass(v[1].toLowerCase()).addClass('mon').attr('src', `https://www.serebii.net/pokemon/art/${v[0]}.png`)).append(
+								$('<div>').addClass('bronze')).append(
+								$('<div>').addClass('silver')).append(
+								$('<div>').addClass('gold'))
+							.click(function() {
+								var monId = parseInt(v[0]);
+								var xorMask = parseInt($('#FullList > h4 div.active').attr('data-xor'));
+								availableMons[monId-1] = xorMask ^ availableMons[monId-1];
+								setCookie('availableMons', availableMons.join(''), 365);
+								if (xorMask == 1) $(this).toggleClass('bronze');
+								else if (xorMask == 2) $(this).toggleClass('silver');
+								else if (xorMask == 4) $(this).toggleClass('gold');
+								$(`#EmblemTable .${v[0]}`)
+									.toggleClass('missing', availableMons[monId-1] == 0)
+									.toggleClass('d-none',  availableMons[monId-1] == 0 && $('#AvailableToggle').is(':checked'));
+								$('#NumOwned').text($('#FullList').find('span.bronze, span.silver, span.gold').length);
+								$('#FullList h4 div.bronze').attr('data-count', $('#FullList').find('span.bronze').length);
+								$('#FullList h4 div.silver').attr('data-count', $('#FullList').find('span.silver').length);
+								$('#FullList h4 div.gold')  .attr('data-count', $('#FullList').find('span.gold')  .length);
+							})) &&
+						availableMons.push(0)
+				);
+				$('#TotalMons').text($('#FullList img.mon').length);
+				var availableMonsCookie;
+				if (availableMonsCookie = getCookie('availableMons')) {
+					(availableMons = availableMonsCookie.split('').map(f => parseInt(f)))
+						.map((f,i) => {
+							Boolean(f) && $(`#EmblemTable .${String(i+1).padStart(3,'0')}`).removeClass('missing');
+							Boolean(f & 1) && $(`#FullList span[data-target=${String(i+1).padStart(3,'0')}]`).addClass('bronze');
+							Boolean(f & 2) && $(`#FullList span[data-target=${String(i+1).padStart(3,'0')}]`).addClass('silver');
+							Boolean(f & 4) && $(`#FullList span[data-target=${String(i+1).padStart(3,'0')}]`).addClass('gold');
+						});
+					while($('#FullListMons > span').length > availableMons.length)
+						availableMons.push(0);
+					setTimeout(() => $('#HideFullListButton').click(), 1000);
+				}
+				$('#NumOwned').text($('#FullList').find('span.bronze, span.silver, span.gold').length);
+				$('#FullList h4 div.bronze').attr('data-count', $('#FullList').find('span.bronze').length);
+				$('#FullList h4 div.silver').attr('data-count', $('#FullList').find('span.silver').length);
+				$('#FullList h4 div.gold')  .attr('data-count', $('#FullList').find('span.gold').length);
+				const canvas = document.getElementById('ExportBuildCanvas');
+				if (canvas.getContext) {
+					ctx = canvas.getContext('2d');
+					bg = new Image();
+					bg.onload = function() {
+						canvas.width = bg.width;
+						canvas.height = bg.height;
+						createImageBitmap(bg, 120,500, 300,40).then(im => buildNameBg = im);
+						createImageBitmap(bg, 235,250, 120,150).then(im => numSelectedBg = im);
+					}
+					bg.src = 'PokemonUniteBoostEmblemLoadout.png';
+					bg.crossOrigin = 'anonymous';
+					bronze = new Image();
+					silver = new Image();
+					gold   = new Image();
+					bronze.src = 'PokemonUniteBronzeEmblem.png';
+					silver.src = 'PokemonUniteSilverEmblem.png';
+					gold.src   = 'PokemonUniteGoldEmblem.png';
+					bronze.crossOrigin = 'anonymous';
+					emblemPos = [[215,100],[129,136],[70,206],[70,295],[129,369],[215,404],[301,369],[360,295],[360,206],[301,136]];
+					green  = new Image();
+					yellow = new Image();
+					red    = new Image();
+					blue   = new Image();
+					white  = new Image();
+					black  = new Image();
+					brown  = new Image();
+					purple = new Image();
+					pink   = new Image();
+					green.src  = 'green.png';
+					yellow.src = 'yellow.png';
+					red.src    = 'red.png';
+					blue.src   = 'blue.png';
+					white.src  = 'white.png';
+					black.src  = 'black.png';
+					brown.src  = 'brown.png';
+					purple.src = 'purple.png';
+					pink.src   = 'pink.png';
+				}
+				else
+					$('#ExportBuildImageButton').addClass('d-none');
+				$('#ExportBuildButton').click(function() {
+					ctx.drawImage(bg, 0,0);
+					mon = new Array(numSelected);
+					$('#BuildMons').children().each((i, e) => {
+						if ($(e).hasClass('bronze'))      ctx.drawImage(bronze, ...emblemPos[i], 81, 81);
+						else if ($(e).hasClass('silver')) ctx.drawImage(silver, ...emblemPos[i], 81, 81);
+						else if ($(e).hasClass('gold'))   ctx.drawImage(gold,   ...emblemPos[i], 81, 81);
+						mon[i] = new Image();
+						mon[i].onload = () => ctx.drawImage(mon[i], ...emblemPos[i].map(x => x+8), 65, 65);
+						mon[i].src = $(e).find('img').attr('src');
+						ctx.drawImage(numSelectedBg, 235,250);
+						ctx.font = 'bold italic 96px sans-serif';
+						ctx.textStyle = 'italic';
+						ctx.fillStyle = 'white';
+						ctx.textAlign = 'center';
+//						ctx.fillText(numSelected, 245,325); // TODO: Photoshop number out of background
+					});
+				});
+				$('#BuildNameInput').on('keyup keydown paste', e => {
+					ctx.drawImage(buildNameBg, 120,500);
+					ctx.font = '20px sans-serif';
+					ctx.fillStyle = 'white';
+					ctx.textAlign = 'center';
+					ctx.fillText($(e.target).val(), 255,520);
+				});
+				$('#ExportBuildImageButton').click(() => canvas.toBlob(function(blob) { 
+					navigator.clipboard.write([new ClipboardItem({[blob.type]: blob})]).then(() => 0, err => 0)
+				}));
+				$('#ExportBuildDataButton').click(() => navigator.clipboard.writeText(
+					$('#BuildMons').children().map((_,s) => Array.from(s.classList.values()).join(' ').replace(/(\d+).* (\w)\w+/, '$1$2')).toArray().join(' ')
+				).then(() => null));
+			}));
+		</script>
+		<style>
+			:root {
+				--scrollbar-width: 0px;
+				--full-list-width: 350px;
+				--full-list-max-width: 100vw;
+				--bronze: #B37C5F;
+				--silver: #ABB0B3;
+				--gold:   #BA9E4F;
+			}
+			body { overflow-x: clip }
+			h1 img {
+				height: 1em;
+				border-radius: 10px;
+			}
+			/*@media (orientation: portrait)  { span.mon img { width: 50% }}
+			@media (orientation: landscape) { span.mon img { width: 33.33333333% }}*/
+			span.mon img { width: 33.33333333% }
+			div.bronze, div.silver, div.gold {
+				display: inline-block;
+				width: 0.5em;
+				height: 0.5em;
+				-moz-border-radius: 50%;
+				-webkit-border-radius: 50%;
+				border-radius: 50%;
+			}
+			div.bronze { background: var(--bronze) }
+			div.silver { background: var(--silver) }
+			div.gold   { background: var(--gold) }
+			#EmblemTable > thead th:not(:first-of-type) { width: 12% }
+			/*@media(orientation: portrait)  { #EmblemTable > tbody > tr { height: calc(66.666667vw / 7 * 2 / 3) }}
+			@media(orientation: landscape) { #EmblemTable > tbody > tr { height: calc(66.666667vw / 7 * 4 / 9) }}*/
+			#EmblemTable > tbody > tr { height: calc(66.666667vw / 8 * 4 / 9) }
+			td { position: relative }
+			td::after {
+				content: '';
+				display: block;
+			}
+			/*@media (orientation: portrait)  { td::after { margin-top: 200% }}
+			@media (orientation: landscape) { td::after { margin-top: 100% }}*/
+			td::after { margin-top: 100% }
+			td > div {
+				position: absolute;
+				top: 5;
+				bottom: 5;
+				left: 5;
+				right: 5;
+			}
+			#EmblemTable span.mon {
+				position: relative;
+				cursor: pointer;
+			}
+			#EmblemTable span.mon div { display: inline }
+			#EmblemTable span.mon img {
+				border-radius: 3px;
+				outline-offset: -3px;
+			}
+			#EmblemTable span.mon:focus { outline: none }
+			#EmblemTable span.mon.selected img, #EmblemTable span.mon:hover > img { outline: 3px solid }
+			#EmblemTable span.mon.selected img { outline-color: #332288bb }
+			#EmblemTable span.mon:hover img { outline-color: #33228877 }
+			#EmblemTable span.mon.selected:hover img { outline-color: #332288 }
+			#EmblemTable span.mon.selected:not(.d-none)::after {
+				content: '✓';
+				font-size: 0.75em;
+				line-height: 1em;
+				text-align: center;
+				color: white;
+				background: #332288;
+				width: 1em;
+				height: 1em;
+				position: absolute;
+				right: 0em;
+/*				top: -0.5em;*/
+				border-radius: .5em;
+				z-index: 1;
+			}
+			#FullList { position: relative }
+			@media (max-width: 991px) {
+				#FullList {
+					position: absolute;
+					right: 0;
+					padding: 1.5em 2em 0;
+					background: cornflowerblue;
+					width: var(--full-list-width);
+					max-width: var(--full-list-max-width);
+				}
+			}
+			#FullList > span:first-of-type {
+				position: absolute;
+				top: -1.25em;
+			}
+			#FullList > span:first-of-type > a {
+				cursor: pointer;
+				font-size: 0.75em;
+				color: var(--bs-link-color);
+				text-decoration: underline;
+				padding-left: 0.5em;
+			}
+			#FullList > span:first-of-type > a:nth-of-type(2) { bottom: .5em}
+			@media (max-width: 991px) { #FullList > span:first-of-type { top: 0.25em }}
+			#FullList > h4 > span > div { position: relative }
+			#FullList > h4 > span > div:not(.active) { cursor: pointer }
+			#FullList > h4 > span > div.active::after {
+				content: '◢';
+				font-size: 40%;
+				position: absolute;
+				top: -1.2em;
+				left: .2em;
+				-moz-transform: rotate(45deg);
+				-webkit-transform: rotate(45deg);
+				transform: rotate(45deg);
+			}
+			#FullList > h4 > span > div::before {
+				content: attr(data-count);
+				font-size: 0.4em;
+				text-align: center;
+				width: 1.25em;
+				position: absolute;
+				top: 0.1em;
+			}
+			#FullListMons {
+				position: relative;
+				max-height: calc(66.666667vw - 8em); /* TODO: Set value precisely */
+				overflow-y: scroll;
+				padding-bottom: 2em;
+				height: calc((min(var(--full-list-width), var(--full-list-max-width)) - 4em) * 20 / 5 + 2em); /* TODO: Put in variables */
+				margin-right: calc(-1 * var(--scrollbar-width));
+				scrollbar-color: lightgray;
+				scrollbar-width: var(--scrollbar-width);
+			}
+			#FullListMons::-webkit-scrollbar {
+				width: var(--scrollbar-width);
+				background-color: lightgray;
+			}
+			#FullListMons::-webkit-scrollbar-thumb { background-color: gray }
+			/*mobile #FullListMons::-webkit-scrollbar { display: none } */
+			#FullListMons > span > div {
+/*				width: 30%;
+				height: 30%;
+*/				position: absolute;
+				margin-top: 68%;
+				z-index: 100;
+				visibility: hidden;
+			}
+			#FullListMons div.bronze { left: 0.25em }
+			#FullListMons > span.bronze > div.bronze { visibility: visible }
+			#FullListMons div.silver { left: calc( 50% - 0.25em) }
+			#FullListMons > span.silver > div.silver { visibility: visible }
+			#FullListMons div.gold   { left: calc(100% - 0.75em) }
+			#FullListMons > span.gold   > div.gold   { visibility: visible }
+			#FullListMons > span {
+				cursor: pointer;
+				position: relative;
+			}
+			#FullListMons > span > img.mon { width: 20% }
+			#FullListMons > span:not(.bronze,.silver,.gold) > img.mon { filter: grayscale(75%) brightness(0.6) }
+/*			#FullList > div > span.missing::before, #FullList > span.missing::after {
+				position: absolute;
+				content: '';
+				background: red;
+				display: block;
+				width: 100%;
+				height: 10%;
+				left: 0;
+				right: 0;
+				top: 20%;
+				bottom: 0;
+				margin: auto;
+			}
+			#FullList > div > span.missing::before {
+				-moz-transform: rotate(45deg);
+				-webkit-transform: rotate(45deg);
+				transform: rotate(45deg);
+				z-index: 100;
+			}
+			#FullList > div > span.missing::after {
+				-moz-transform: rotate(-45deg);
+				-webkit-transform: rotate(-45deg);
+				transform: rotate(-45deg);
+			}
+*/			#Filters > h4 { position: relative }
+			#Filters > h4 > a {
+				position: absolute;
+				cursor: pointer;
+				font-size: 0.4em;
+				color: var(--bs-link-color);
+				text-decoration: underline;
+				padding-left: 0.75em;
+			}
+			#Filters > h4 > a:hover { color: var(--bs-link-hover-color) }
+			#Filters > h4 > a:nth-of-type(1) {}
+			#Filters > h4 > a:nth-of-type(2) { top: 1.25em }
+			#Filters > div > div {
+				cursor: pointer;
+				padding-left: 0.2rem;
+				padding-right: 0;
+			}
+			#Filters > div > div::before {
+				display: inline-block;
+				content: "✗ ";
+				width: 1em;
+			}
+			#Filters > div > div.active::before { content: "✓ " }
+			#Filters .green,  img.green  { background-color: #85FF92 } /* https://img.game8.co/3552095/571ed2a918cb8faa80dd7970bcfa9add.png/show */
+			#Filters .yellow, img.yellow { background-color: #F2FF67 } /* https://img.game8.co/3552094/68a7e69e3ff55259164c8b083a39c858.png/show */
+			#Filters .red,    img.red    { background-color: #EF5D6C } /* https://img.game8.co/3552093/c570265e944122e9af6d48ba5946c62c.png/show */
+			#Filters .blue,   img.blue   { background-color: #67B5F8 } /* https://img.game8.co/3552105/fb9fafff2956af8b37b6870f8009187e.png/show */
+			#Filters .white,  img.white  { background-color: #DFEEF2 } /* https://img.game8.co/3552096/7fc2f9d011dfb45d9aeda650239cfa27.png/show */
+			#Filters .black,  img.black  { background-color: #555F69 } /* https://img.game8.co/3552104/62e10460af25cb21885e45b28f99c695.png/show */
+			#Filters .brown,  img.brown  { background-color: #F18350 } /* https://img.game8.co/3552103/27822e3d64b458630f97813a8b2232ce.png/show */
+			#Filters .purple, img.purple { background-color: #B162F6 } /* https://img.game8.co/3552097/b3aa2662c69e2ac6d99a0b6ab9d3aea2.png/show */
+			#Filters .pink,   img.pink   { background-color: #F599F5 } /* https://img.game8.co/3552092/6617ac8b41e5a08195b45f3321131b02.png/show */
+			#Filters .navy,   img.navy   { background-color: #5C7FDA } /* https://img.game8.co///show */
+			img.green.white  { background: linear-gradient(135deg, #85FF92 50%, #DFEEF2 50%) }
+			img.green.black  { background: linear-gradient(135deg, #85FF92 50%, #555F69 50%) }
+			img.purple.brown { background: linear-gradient(135deg, #B162F6 50%, #F18350 50%) }
+			img.blue.black   { background: linear-gradient(135deg, #67B5F8 50%, #555F69 50%) }
+			img.blue.brown   { background: linear-gradient(135deg, #67B5F8 50%, #F18350 50%) }
+			img.blue.purple  { background: linear-gradient(135deg, #67B5F8 50%, #B162F6 50%) }
+			img.purple.black { background: linear-gradient(135deg, #B162F6 50%, #555F69 50%) }
+			@media (max-width: 991px) { #Build .col-5-9 { width: 55.55555555% } }
+			#Build > div > span { position: relative } 
+			@media (min-width: 992px) { #BuildBoosts > span { margin-left: -1em } }
+			#Build > div > span > span {
+				display: inline-block;
+				width: 2em;
+				text-align: left;
+			}
+			#Build > div > span > sup {
+				display: inline-block;
+				width: 0;
+				float: right;
+				left: -3em;
+				top: -0.25em;
+			}
+			#Build > div > span > sup.t1 { color: hsl(199deg 90% 30%) }
+			#Build > div > span > sup.t2 { color: hsl(199deg 90% 40%) }
+			#Build > div > span > sup.t3 { color: hsl(199deg 90% 50%) }
+			#BuildMons {
+				margin-left: calc(var(--bs-gutter-x) * .5);
+				margin-right: calc(var(--bs-gutter-x) * -.5);
+				max-height: calc(66.666667vw - 27em);
+				overflow-y: scroll;
+				scrollbar-color: lightgray;
+				scrollbar-width: var(--scrollbar-width);
+				width: 120%;
+				max-width: 120%;
+			}
+			#BuildMons::-webkit-scrollbar {
+				width: var(--scrollbar-width);
+				height: var(--scrollbar-width);
+				background-color: lightgray;
+			}
+			#BuildMons::-webkit-scrollbar-thumb { background-color: gray }
+			#BuildMons span.mon {
+				display: inline-block;
+				width: 20%;
+				margin-bottom: 1em;
+				font-size: 1.5em;
+			}
+			#BuildMons span.mon > div:first-of-type {
+/*				border: 3px solid transparent;
+				border-radius: 50%;
+				overflow: clip;
+*/				background-size: calc(100%);
+				background-position: center;
+				margin-bottom: .2em;
+			}
+			#BuildMons span.bronze > div:first-of-type { background: url('PokemonUniteBronzeEmblem.png') transparent center center/cover no-repeat }
+			#BuildMons span.silver > div:first-of-type { background: url('PokemonUniteSilverEmblem.png') transparent center center/cover no-repeat }
+			#BuildMons span.gold   > div:first-of-type { background: url('PokemonUniteGoldEmblem.png')   transparent center center/cover no-repeat }
+			#BuildMons img {
+				width: 80%;
+				margin: 10%;
+				background: none;
+			}
+			#BuildMons div:not(.active) { cursor: pointer }
+			#BuildMons div.bronze, #BuildMons div.silver, #BuildMons div.gold { position: absolute }
+			#BuildMons div.bronze { left: .25em }
+			#BuildMons div.silver { left: calc( 50% - 0.25em) }
+			#BuildMons div.gold   { left: calc(100% - 0.75em) }
+			#BuildMons div.active::after {
+				content: '◆';
+				font-size: 0.5em;
+				line-height: 0.9;
+				width: 1em;
+				text-align: center;
+				position: absolute;
+			}
+			#Build a {
+				cursor: pointer;
+				font-size: 0.75em;
+				color: var(--bs-link-color);
+				text-decoration: underline;
+			}
+			#BuildMons:empty ~ a#ExportBuildButton { display: none }
+			@media (min-width: 992px) {
+				#Build > div > span > sup {
+					display: unset;
+					position: absolute;
+					left: 6em;
+					top: 0.5em;
+				}
+				#BuildMons span.mon {
+					width: 75%;
+					margin-right: 25%;
+					margin-bottom: 0;
+					font-size: 2em;
+				}
+				#BuildMons div.bronze {
+					bottom: .2em;
+					left: calc(100% + 0.1em);
+				}
+				#BuildMons div.silver {
+					bottom: calc(50% - 0.5em / 2 + 0.2em / 2);
+					left: calc(100% + 0.1em);
+				}
+				#BuildMons div.gold {
+					bottom: calc(100% - 0.5em);
+					left: calc(100% + 0.1em);
+				}
+			}
+			@media (max-width: 991px) { /*#HideFullListButton { display: none } }*/
+				#FullList {
+					position: fixed;
+					transition: background-color 2s, transform 2s;
+					z-index: 100;
+				}
+				#HideFullListButton {
+					position: absolute;
+					top: 45%;
+					left: 0;
+					cursor: pointer;
+					width: 1em;
+					height: 3em;
+					line-height: 1em;
+					padding-top: 0.6em;
+					padding-right: 1em;
+					background: lightgrey;
+					z-index: 1;
+				}
+				#HideFullListButton::after {
+					content: '▶';
+					font-size: 0.75em;
+					line-height: 0;
+					position: absolute;
+					top: 1.9em;
+					left: 0.2em;
+				}
+				#FullList.docked #HideFullListButton::after { content: '◀' }
+				#FullList.docked {
+					transform: translateX(calc(min(var(--full-list-width),var(--full-list-max-width)) - 2em));
+				}
+			}
+			#ExportBuildModal { overflow: hidden }
+			#ExportBuildModal h5 #BuildNameLabel {
+				font-size: 1em;
+				font-weight: 500;
+			}
+			#ExportBuildModal .modal-dialog {
+				display: inline-block;
+				left: 50%;
+				max-width: 1024px; /* The width of the image */
+			}
+			#ExportBuildModal .modal-content { left: -50% }
+			#ExportBuildCanvas {
+				max-height: 50vh;
+				max-width: 90vw;
+/*				max-width: calc(50vh / 576 * 1024);
+				max-height: calc(90vw / 1024 * 576);
+*/			}
+		</style>
+	</head>
+	<body class="container">
+		<h1>Pok&eacute;mon Unite Emblems <a href="https://coindrop.to/kittycar" target="_blank"><img src="https://coindrop.to/embed-button.png" alt="Coindrop.to me"></img></a></h1>
+		<img src="spinner.gif" id="Spinner" />
+		<div class="row d-none">
+			<span class="col-12">
+				<input type="checkbox" checked disabled></input>&ensp;Show sprites&emsp;<input type="checkbox" id="AvailableToggle"></input>&ensp;Available emblems only&emsp;
+				(<span id="NumSelected">0</span> / 10 emblems selected) <a href="javascript:$('#EmblemTable .selected > div').click()">Unselect all</a>
+			</span>
+			<div class="col-12 col-lg-8"><table class="table table-sm" id="EmblemTable">
+				<thead class="thead-light"><tr><th scope="col"></th></tr></thead>
+				<tbody></tbody>
+			</table></div>
+			<div class="col-2" id="FullList">
+				<div id="HideFullListButton"></div>
+				<span><span id="NumOwned"></span> / <span id="TotalMons"></span> <a id="ImportOwned">Import</a><a id="ExportOwned">Export</a></span>
+				<h4>Owned&ensp;<span><div class="bronze active" data-xor=1></div> <div class="silver" data-xor=2></div> <div class="gold" data-xor=4></div></span></h4>
+				<div id="FullListMons"></div>
+			</div>
+			<div class="col-12 col-lg-1 my-2 my-lg-0" id="Filters">
+				<h4>Filter<a>All</a><a>None</a></h4>
+				<div class="row mx-0">
+					<div class="col col-lg-12 green"  data-target="#EmblemTable .green" >SpA</div><!-- Green, SpA 1,2,4 246-->
+					<div class="col col-lg-12 yellow" data-target="#EmblemTable .yellow">Spd</div><!-- Yellow, Spd 4/6/12 357-->
+					<div class="col col-lg-12 red"    data-target="#EmblemTable .red"   >ASp</div><!-- Red, ASp 2/4/8 357-->
+					<div class="col col-lg-12 blue"   data-target="#EmblemTable .blue"  >Def</div><!-- Blue, Def 2/4/8 246-->
+					<div class="col col-lg-12 white"  data-target="#EmblemTable .white" >HP </div><!-- White, HP 1/2/4 246-->
+					<div class="col col-lg-12 black"  data-target="#EmblemTable .black" >CDR</div><!-- Black, CDR 1/2/4 357-->
+					<div class="col col-lg-12 brown"  data-target="#EmblemTable .brown" >Atk</div><!-- Brown, Atk 1/2/4 246-->
+					<div class="col col-lg-12 purple" data-target="#EmblemTable .purple">SpD</div><!-- Purple, SpD 2/4/8 246 -->
+					<div class="col col-lg-12 pink"   data-target="#EmblemTable .pink"  >HED</div><!-- Pink, Hindrance effect duration 4/8/16 357 -->
+					<div class="col col-lg-12 navy"   data-target="#EmblemTable .navy"  >UCR</div><!-- Navy, Unite Charge Rate 1/2/4 357 -->
+				</div>
+			</div>
+			<div class="row col-12 col-lg-1 d-lg-block mx-lg-0 my-2 my-lg-0" id="Build">
+				<h4>Build</h4>
+				<div class="row col-5-9 col-lg-12 px-0 mx-0 mx-lg-3" id="BuildBoosts">
+					<span class="col col-lg-12 px-0"><span id="HPBoost" >&ensp;&thinsp;0</span>&ensp;HP  <sup>+<span id="WhiteBoost" >0</span>%</sup></span>
+					<span class="col col-lg-12 px-0"><span id="AtkBoost">&ensp;&thinsp;0</span>&ensp;Atk <sup>+<span id="BrownBoost" >0</span>%</sup></span>
+					<span class="col col-lg-12 px-0"><span id="SpABoost">&ensp;&thinsp;0</span>&ensp;SpA <sup>+<span id="GreenBoost" >0</span>%</sup></span>
+					<span class="col col-lg-12 px-0"><span id="DefBoost">&ensp;&thinsp;0</span>&ensp;Def <sup>+<span id="BlueBoost"  >0</span>%</sup></span>
+					<span class="col col-lg-12 px-0"><span id="SpDBoost">&ensp;&thinsp;0</span>&ensp;SpD <sup>+<span id="PurpleBoost">0</span>%</sup></span>
+					<span class="col col-lg-12 px-0"><span id="SpdBoost">&ensp;&thinsp;0</span>&ensp;Spd <sup>+<span id="YellowBoost">0</span>%</sup></span>
+					<div class="col-12 d-lg-none"><br /></div>
+					<span class="col col-lg-12 px-0"><span id="CHRBoost">&ensp;&thinsp;0</span>%ᴄʜʀ</span>
+					<span class="col col-lg-12 px-0"><!--                    -->&emsp; &emsp;&hairsp;ᴄᴅʀ <sup>+<span id="BlackBoost" >0</span>%</sup></span>
+					<span class="col col-lg-12 px-0"><!--                            -->&emsp; &emsp;ASp <sup>+<span id="RedBoost"   >0</span>%</sup></span>
+					<span class="col col-lg-12 px-0"><!--                            -->&emsp; &emsp;HED <sup>+<span id="PinkBoost"  >0</span>%</sup></span>
+					<span class="col col-lg-12 px-0"><!--                            -->&emsp; &emsp;UCR <sup>+<span id="NavyBoost"  >0</span>%</sup></span>
+				</div>
+				<div class="col px-0" id="BuildMons"></div>
+				<a id="ImportBuildButton">Import</a>&emsp;<a id="ExportBuildButton" data-bs-toggle="modal" data-bs-target="#ExportBuildModal">Export</a>
+			</div>
+		</div>
+		<div class="toast-container position-fixed bottom-0 end-0 p-3i d-none">
+			<div id="ImportOwnedToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="false">
+				<div class="toast-header">
+					<img src="favicon.svg" class="rounded me-2" alt="..." height=20>
+					<strong class="me-auto">Pok&eacute;mon Unite emblem utility</strong>
+					<small></small>
+					<button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+				</div>
+				<div class="toast-body">
+					Paste exported data below to import
+					<div class="form-floating mb-3">
+						<input type="text" class="form-control" id="ImportOwnedInput" placeholder="Paste exported data here">
+						<label for="ImportOwnedInput">Emblem-collection data</label>
+					</div>
+					<button type="button" class="btn btn-success" id="ImportOwnedButton">Import!</button>
+				</div>
+			</div>
+			<div id="ExportOwnedToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+				<div class="toast-header">
+					<img src="favicon.svg" class="rounded me-2" alt="..." height=20>
+					<strong class="me-auto">Pok&eacute;mon Unite emblem utility</strong>
+					<small>Just now</small>
+					<button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+				</div>
+				<div class="toast-body">Emblem-collection data copied to clipboard!</div>
+			</div>
+			<div id="ExportBuildToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+				<div class="toast-header">
+					<img src="favicon.svg" class="rounded me-2" alt="..." height=20>
+					<strong class="me-auto">Pok&eacute;mon Unite emblem utility</strong>
+					<small>Just now</small>
+					<button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+				</div>
+				<div class="toast-body">Emblem-build data copied to clipboard!</div>
+			</div>
+		</div>
+		<div class="modal d-none" id="ExportBuildModal" tabindex="-1" aria-labelledby="ExportBuildModalLabel"><div class="modal-dialog"><div class="modal-content">
+			<div class="modal-header">
+				<h5 class="modal-title" id="ExportBuildModalLabel">
+					<div class="input-group input-group-sm">
+						<span class="input-group-text" id="BuildNameLabel">My loadout</span>
+						<input type="text" class="form-control" id="BuildNameInput" placeholder="Custom name" maxlength=16
+						       aria-label="My loadout" aria-describedby="BuildNameLabel" />
+					</div>
+				</h5>
+				<button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+			</div>
+			<div class="modal-body p-0">
+				<canvas id="ExportBuildCanvas">
+					This feature is not supported in your browser ☹️. You can still export the data using the button below. 
+				</canvas>
+			</div>
+			<div class="modal-footer">
+				<button type="button" class="btn btn-success" id="ExportBuildImageButton">Copy image</button>
+				<button type="button" class="btn btn-primary" id="ExportBuildDataButton" >Copy data</button>
+				<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+			</div>
+		</div></div></div>
+		<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.bundle.min.js"
+		        integrity="sha384-A3rJD856KowSb7dwlZdYEkO39Gagi7vIsF0jrRAoQmDKKtQBHUuLZ9AsSv4jD4Xa" crossorigin="anonymous"></script>
+	</body>
+</html>
