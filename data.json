@@ -22,7 +22,7 @@
 		},
 		"+SpA": {
 			"-HP":  ["Bulbasaur", "Squirtle", "Abra", "Magmar", "Horsea", "Jolteon"],
-			"-Atk": ["Venusaur", "Arcanine", "Alakazam", "Articuno"],
+			"-Atk": ["Venusaur", "Arcanine", "Alakazam", "Porygon", "Articuno"],
 			"-SpA": ["&mdash;"],
 			"-Def": ["Ivysaur", "Wartortle", "Jynx"],
 			"-SpD": ["Growlithe", "Exeggcute", "Seadra", "Moltres"],
@@ -32,7 +32,7 @@
 		},
 		"+Def": {
 			"-HP":  ["Caterpie", "Rattata", "Magnemite", "Shellder", "Onix", "Koffing", "Omanyte"],
-			"-Atk": ["Butterfree", "Magneton", "Porygon"],
+			"-Atk": ["Butterfree", "Magneton"],
 			"-SpA": ["Raticate", "Parasect", "Golem"],
 			"-Def": ["&mdash;"],
 			"-SpD": ["Geodude", "Cloyster", "Tangela"],
